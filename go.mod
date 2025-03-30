@@ -1,4 +1,4 @@
-module rocket-in-console
+module github.com/shameoff/rocket-in-console
 
 go 1.22.2
 
