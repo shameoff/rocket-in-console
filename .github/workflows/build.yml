@@ -24,9 +24,6 @@ jobs:
             arch: arm64
             runner_os: windows-latest
           - goos: darwin
-            arch: amd64
-            runner_os: macos-latest
-          - goos: darwin
             arch: arm64
             runner_os: macos-latest
     runs-on: ${{ matrix.runner_os }}
@@ -47,7 +44,7 @@ jobs:
           go build -o rocket-${{ matrix.goos }}-${{ matrix.arch }} ./cmd/myrocketgame
 
       - name: Archive binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rocket-${{ matrix.goos }}-${{ matrix.arch }}
           path: rocket-${{ matrix.goos }}-${{ matrix.arch }}
