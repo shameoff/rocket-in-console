@@ -1,3 +1,4 @@
+// Package main.go
 package main
 
 import (
@@ -46,6 +47,7 @@ func processInput(rocket *objects.Rocket, eventQueue chan termbox.Event, dt floa
 		}
 	}
 AfterInput:
+	// Обновляем тягу в зависимости от нажатых клавиш
 	if upPressed {
 		rocket.ThrustY += verticalStep
 	}
@@ -59,15 +61,33 @@ AfterInput:
 		rocket.ThrustX += horizontalStep
 	}
 
-	// Определяем альтитуду (расстояние от земли)
+	// Ограничиваем тягу:
+	// Для главного двигателя (вертикальной тяги) – от 0 до 100.
+	if rocket.ThrustY > 100 {
+		rocket.ThrustY = 100
+	}
+	if rocket.ThrustY < -10 {
+		rocket.ThrustY = -10
+	}
+	// Для вспомогательных (горизонтальной тяги) – от -10 до 10.
+	if rocket.ThrustX > 10 {
+		rocket.ThrustX = 10
+	}
+	if rocket.ThrustX < -10 {
+		rocket.ThrustX = -10
+	}
+
+	// Плавно сбрасываем тягу, если клавиши не нажаты:
+	// В зоне гравитации (altitude < gravityCutoff) вертикальная тяга стремится к hoverThrust (например, 9.8).
+	// В космосе вертикальная тяга стремится к 0.
 	altitude := float64(objects.GroundLevel - rocket.Y)
 	if altitude < gravityCutoff {
 		rocket.ThrustY += (hoverThrust - rocket.ThrustY) * decayRate * dt
 	} else {
 		rocket.ThrustY += (0 - rocket.ThrustY) * decayRate * dt
 	}
+	// Горизонтальная тяга всегда сбрасывается к 0:
 	rocket.ThrustX += (0 - rocket.ThrustX) * decayRate * dt
-
 	return false
 }
 
