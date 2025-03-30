@@ -1,0 +1,38 @@
+name: Cross-Platform Build
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        goos: [linux, windows, darwin]
+        arch: [amd64, arm64]
+        # Определяем соответствующий раннер в зависимости от целевой ОС:
+        runner_os: "${{ fromJson('{\"linux\": \"ubuntu-latest\", \"windows\": \"windows-latest\", \"darwin\": \"macos-latest\"}')[matrix.goos] }}"
+    runs-on: ${{ matrix.runner_os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.18'
+
+      - name: Build for ${{ matrix.goos }} ${{ matrix.arch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build -o rocket-${{ matrix.goos }}-${{ matrix.arch }} ./cmd/myrocketgame
+
+      - name: Archive binary
+        uses: actions/upload-artifact@v3
+        with:
+          name: rocket-${{ matrix.goos }}-${{ matrix.arch }}
+          path: rocket-${{ matrix.goos }}-${{ matrix.arch }}
