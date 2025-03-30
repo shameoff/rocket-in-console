@@ -10,10 +10,25 @@ jobs:
   build:
     strategy:
       matrix:
-        goos: [linux, windows, darwin]
-        arch: [amd64, arm64]
-        # Определяем соответствующий раннер в зависимости от целевой ОС:
-        runner_os: "${{ fromJson('{\"linux\": \"ubuntu-latest\", \"windows\": \"windows-latest\", \"darwin\": \"macos-latest\"}')[matrix.goos] }}"
+        include:
+          - goos: linux
+            arch: amd64
+            runner_os: ubuntu-latest
+          - goos: linux
+            arch: arm64
+            runner_os: ubuntu-latest
+          - goos: windows
+            arch: amd64
+            runner_os: windows-latest
+          - goos: windows
+            arch: arm64
+            runner_os: windows-latest
+          - goos: darwin
+            arch: amd64
+            runner_os: macos-latest
+          - goos: darwin
+            arch: arm64
+            runner_os: macos-latest
     runs-on: ${{ matrix.runner_os }}
     steps:
       - name: Checkout repository
