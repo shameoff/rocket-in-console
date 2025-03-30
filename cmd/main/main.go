@@ -11,10 +11,108 @@ import (
 	"github.com/shameoff/rocket-in-console/pkg/render"
 )
 
+const (
+	verticalStep     = 0.5
+	horizontalStep   = 0.5
+	decayRate        = 0.3
+	safeLandingSpeed = 20.0
+	gravityCutoff    = 150.0
+)
+
+func processInput(rocket *objects.Rocket, eventQueue chan termbox.Event, dt float64, hoverThrust float64) bool {
+	upPressed, downPressed, leftPressed, rightPressed := false, false, false, false
+
+	// Обрабатываем все накопленные события
+	for {
+		select {
+		case ev := <-eventQueue:
+			if ev.Type == termbox.EventKey {
+				if ev.Key == termbox.KeyEsc {
+					return true
+				}
+				switch ev.Key {
+				case termbox.KeyArrowUp:
+					upPressed = true
+				case termbox.KeyArrowDown:
+					downPressed = true
+				case termbox.KeyArrowLeft:
+					leftPressed = true
+				case termbox.KeyArrowRight:
+					rightPressed = true
+				}
+			}
+		default:
+			goto AfterInput
+		}
+	}
+AfterInput:
+	if upPressed {
+		rocket.ThrustY += verticalStep
+	}
+	if downPressed {
+		rocket.ThrustY -= verticalStep
+	}
+	if leftPressed {
+		rocket.ThrustX -= horizontalStep
+	}
+	if rightPressed {
+		rocket.ThrustX += horizontalStep
+	}
+
+	// Определяем альтитуду (расстояние от земли)
+	altitude := float64(objects.GroundLevel - rocket.Y)
+	if altitude < gravityCutoff {
+		rocket.ThrustY += (hoverThrust - rocket.ThrustY) * decayRate * dt
+	} else {
+		rocket.ThrustY += (0 - rocket.ThrustY) * decayRate * dt
+	}
+	rocket.ThrustX += (0 - rocket.ThrustX) * decayRate * dt
+
+	return false
+}
+
+func updateGame(rocket *objects.Rocket, dt float64, hoverThrust float64) {
+	physics.UpdateRocket(rocket, dt, objects.GroundLevel, gravityCutoff, hoverThrust)
+}
+
+func handleCollisions(rocket *objects.Rocket) {
+	if rocket.Y+len(objects.RocketSprite) >= objects.GroundLevel && rocket.Vy > safeLandingSpeed {
+		screenWidth, screenHeight := termbox.Size()
+		cameraX := rocket.X - screenWidth/2
+		cameraY := rocket.Y - screenHeight/2
+		render.DrawSprite(rocket.X-cameraX, rocket.Y-cameraY, objects.ExplosionSprite, termbox.ColorRed, termbox.ColorBlack)
+		termbox.Flush()
+		time.Sleep(2 * time.Second)
+		rocket.X = objects.WorldWidth/2 - len(objects.RocketSprite[0])/2
+		rocket.Y = objects.GroundLevel - len(objects.RocketSprite)
+		rocket.Vx = 0
+		rocket.Vy = 0
+		rocket.Fuel = 100
+	}
+}
+
+func renderFrame(rocket *objects.Rocket) {
+	screenWidth, screenHeight := termbox.Size()
+	cameraX := rocket.X - screenWidth/2
+	cameraY := rocket.Y - screenHeight/2
+	skyColor := render.GetSkyColor(rocket, objects.GroundLevel)
+	termbox.Clear(termbox.ColorDefault, skyColor)
+	render.DrawClouds(objects.Clouds, cameraX, cameraY, screenWidth, screenHeight)
+	render.DrawStars(cameraX, cameraY, screenWidth, screenHeight, objects.Stars, objects.IsStarAt)
+	render.DrawGround(cameraX, cameraY, screenWidth, screenHeight, objects.GroundLevel)
+	render.DrawTrees(objects.Trees, cameraX, cameraY, screenWidth, screenHeight)
+	render.DrawSprite(rocket.X-cameraX, rocket.Y-cameraY, objects.RocketSprite, termbox.ColorWhite, termbox.ColorBlack)
+	render.DrawExhaust(rocket, cameraX, cameraY)
+	render.DrawStats(rocket, screenWidth, screenHeight)
+	const cosmicSpeedThreshold = 100.0
+	if rocket.Vy > cosmicSpeedThreshold {
+		render.DrawNotificationBox(screenWidth, "COSMIC SPEED!")
+	}
+	termbox.Flush()
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
-
-	// Инициализация объектов мира
 	objects.InitStars(100)
 	objects.InitClouds(200)
 	objects.InitTrees(200)
@@ -24,12 +122,9 @@ func main() {
 	}
 	defer termbox.Close()
 
-	// Создаём канал для ввода
 	eventQueue := input.EventQueue()
+	hoverThrust := objects.HoverThrust
 
-	const hoverThrust = 9.8 // базовая вертикальная тяга для зависания
-
-	// Инициализация ракеты: старт с земли
 	rocket := &objects.Rocket{
 		X:       objects.WorldWidth/2 - len(objects.RocketSprite[0])/2,
 		Y:       objects.GroundLevel - len(objects.RocketSprite),
@@ -47,74 +142,13 @@ func main() {
 		dt := now.Sub(lastTime).Seconds()
 		lastTime = now
 
-		// Обработка ввода
-		select {
-		case ev := <-eventQueue:
-			if ev.Type == termbox.EventKey {
-				if ev.Key == termbox.KeyEsc {
-					return
-				}
-				switch ev.Key {
-				// Ракета двигается с максимальным ускорением вперед, но с ограничением в стороны
-				case termbox.KeyArrowUp:
-					rocket.ThrustY += 1.0
-				case termbox.KeyArrowDown:
-					rocket.ThrustY -= 1.0
-					if rocket.ThrustY < -10 {
-						rocket.ThrustY = -10
-					}
-				case termbox.KeyArrowLeft:
-					rocket.ThrustX -= 1.0
-					if rocket.ThrustX < -10 {
-						rocket.ThrustX = -10
-					}
-				case termbox.KeyArrowRight:
-					rocket.ThrustX += 1.0
-					if rocket.ThrustX > 10 {
-						rocket.ThrustX = 10
-					}
-				}
-			}
-		default:
-			// если нет событий – продолжаем
+		if processInput(rocket, eventQueue, dt, hoverThrust) {
+			return
 		}
 
-		// Обновление физики ракеты
-		physics.UpdateRocket(rocket, dt, objects.GroundLevel, 150.0)
-
-		screenWidth, screenHeight := termbox.Size()
-		cameraX := rocket.X - screenWidth/2
-		cameraY := rocket.Y - screenHeight/2
-
-		const safeLandingSpeed = 20.0
-		if rocket.Y+len(objects.RocketSprite) >= objects.GroundLevel && rocket.Vy > safeLandingSpeed {
-			render.DrawSprite(rocket.X-cameraX, rocket.Y-cameraY, objects.ExplosionSprite, termbox.ColorRed, termbox.ColorBlack)
-			termbox.Flush()
-			time.Sleep(2 * time.Second)
-
-			rocket.X = objects.WorldWidth/2 - len(objects.RocketSprite[0])/2
-			rocket.Y = objects.GroundLevel - len(objects.RocketSprite)
-			rocket.Vx = 0
-			rocket.Vy = 0
-			rocket.Fuel = 100
-		}
-
-		skyColor := render.GetSkyColor(rocket, objects.GroundLevel)
-		termbox.Clear(termbox.ColorDefault, skyColor)
-
-		render.DrawClouds(objects.Clouds, cameraX, cameraY, screenWidth, screenHeight)
-		render.DrawStars(cameraX, cameraY, screenWidth, screenHeight, objects.Stars, objects.IsStarAt)
-		render.DrawGround(cameraX, cameraY, screenWidth, screenHeight, objects.GroundLevel)
-		render.DrawTrees(objects.Trees, cameraX, cameraY, screenWidth, screenHeight)
-		render.DrawSprite(rocket.X-cameraX, rocket.Y-cameraY, objects.RocketSprite, termbox.ColorWhite, termbox.ColorBlack)
-		render.DrawStats(rocket, screenWidth, screenHeight)
-
-		const cosmicSpeedThreshold = 100.0
-		if rocket.Vy > cosmicSpeedThreshold {
-			render.DrawNotificationBox(screenWidth, "COSMIC SPEED!")
-		}
-
-		termbox.Flush()
+		updateGame(rocket, dt, hoverThrust)
+		handleCollisions(rocket)
+		renderFrame(rocket)
 		time.Sleep(30 * time.Millisecond)
 	}
 }

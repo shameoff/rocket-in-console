@@ -129,3 +129,68 @@ func DrawNotificationBox(screenWidth int, message string) {
 		termbox.SetCell(x, bottomY, ch, termbox.ColorMagenta, termbox.ColorBlack)
 	}
 }
+
+// DrawExhaust рисует след от сопел, если активирована тяга в горизонтальном или вертикальном направлении.
+// Для горизонтали: если ThrustX > 0 (движение вправо) – рисуем след с левой стороны, если ThrustX < 0 – с правой.
+// Для вертикали: если ThrustY > HoverThrust – след снизу, если ThrustY < HoverThrust – след сверху.
+func DrawExhaust(rocket *objects.Rocket, cameraX, cameraY int) {
+	threshold := 0.5
+	width := len(objects.RocketSprite[0])
+	height := len(objects.RocketSprite)
+
+	// Горизонтальный след:
+	if rocket.ThrustX > threshold {
+		// Если ThrustX > 0, значит задействована правая тяга (движение вправо), след рисуем с левой стороны ракеты.
+		flame := "=>"
+		x := rocket.X - cameraX - len(flame) // рисуем слева от ракеты
+		// Два следа – один чуть выше центра, другой чуть ниже
+		y1 := rocket.Y - cameraY + height/3
+		y2 := rocket.Y - cameraY + (2 * height / 3)
+		for i, r := range flame {
+			termbox.SetCell(x+i, y1, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+		for i, r := range flame {
+			termbox.SetCell(x+i, y2, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+	} else if rocket.ThrustX < -threshold {
+		// Если ThrustX < 0, значит активирована левая тяга (движение влево), след рисуем с правой стороны.
+		flame := "<="
+		x := rocket.X - cameraX + width
+		y1 := rocket.Y - cameraY + height/3
+		y2 := rocket.Y - cameraY + (2 * height / 3)
+		for i, r := range flame {
+			termbox.SetCell(x+i, y1, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+		for i, r := range flame {
+			termbox.SetCell(x+i, y2, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+	}
+
+	// Вертикальный след:
+	if rocket.ThrustY > objects.HoverThrust+threshold {
+		// Если ThrustY больше HoverThrust, значит двигатели снизу работают, рисуем след внизу.
+		flame := "vv"
+		// Рисуем два следа – один примерно в левой трети, другой – в правой трети нижней части ракеты.
+		x1 := rocket.X - cameraX + width/3
+		x2 := rocket.X - cameraX + (2*width)/3 - len(flame)
+		y := rocket.Y - cameraY + height
+		for i, r := range flame {
+			termbox.SetCell(x1+i, y, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+		for i, r := range flame {
+			termbox.SetCell(x2+i, y, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+	} else if rocket.ThrustY < objects.HoverThrust-threshold {
+		// Если ThrustY меньше HoverThrust, значит, возможно, задействованы двигатели в верхней части, рисуем след сверху.
+		flame := "^^"
+		x1 := rocket.X - cameraX + width/3
+		x2 := rocket.X - cameraX + (2*width)/3 - len(flame)
+		y := rocket.Y - cameraY - 1 // над ракетой
+		for i, r := range flame {
+			termbox.SetCell(x1+i, y, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+		for i, r := range flame {
+			termbox.SetCell(x2+i, y, r, termbox.ColorRed, termbox.ColorBlack)
+		}
+	}
+}

@@ -5,29 +5,33 @@ import (
 	"math"
 )
 
-// UpdateRocket обновляет состояние ракеты с учётом тяги, гравитации и высоты.
-func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, gravityCutoff float64) {
-	// Вычисляем "альтитуду" как расстояние от земли:
+// UpdateRocket обновляет состояние ракеты с учетом тяги, гравитации и зоны отключения гравитации.
+// Если ракета находится в зоне гравитации (altitude < gravityCutoff), то чистое ускорение равно ThrustY - gravity.
+// Если ракета вне зоны (altitude >= gravityCutoff), то чистое ускорение = ThrustY (без гравитации).
+// Для отрицательного ускорения (если ThrustY меньше гравитации) применяется дополнительное затухание.
+func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, gravityCutoff float64, hoverThrust float64) {
+	// Вычисляем "альтитуду" (расстояние от земли; поскольку y растет вниз, чем меньше r.Y, тем выше ракета)
 	altitude := float64(groundLevel - r.Y)
 
-	// Определяем, действует ли гравитация:
-	var gravityEffect float64
+	var netAccY float64
 	if altitude < gravityCutoff {
-		gravityEffect = 9.8
+		// В зоне гравитации: чтобы зависать, ThrustY должно быть равно gravity (например, 9.8).
+		// Чистое ускорение = ThrustY - gravity.
+		netAccY = r.ThrustY - 9.8
+		// Если чистое ускорение отрицательное, применим затухание (например, для "смягчения" падения)
+		if netAccY < 0 {
+			netAccY *= 0.3
+		}
 	} else {
-		gravityEffect = 0
+		// В космосе гравитация не действует, поэтому netAccY = ThrustY.
+		netAccY = r.ThrustY
 	}
 
-	const decelerationFactor = 0.3
-	// Для вертикали: чистое ускорение – разница между вертикальной тягой и гравитацией
-	netAccY := r.ThrustY - gravityEffect
-	if netAccY < 0 {
-		netAccY *= decelerationFactor
-	}
-	// Заметим: поскольку ось Y растёт вниз, чтобы подняться, надо уменьшать Vy
+	// Обновляем вертикальную скорость.
+	// Заметим, что в нашей системе ось Y растет вниз, поэтому для движения вверх (по желанию) мы уменьшаем Vy.
 	r.Vy -= netAccY * dt
 
-	// Для горизонтали: просто обновляем скорость на основе тяги
+	// Обновляем горизонтальную скорость
 	r.Vx += r.ThrustX * dt
 
 	// Обновляем положение ракеты
@@ -40,6 +44,6 @@ func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, gravityCutoff 
 		r.Vy = 0
 	}
 
-	// (Опционально можно добавить затухание горизонтальной скорости, чтобы ракета не "бесконечно" скользила)
+	// Дополнительное затухание горизонтальной скорости (чтобы не накапливалась бесконечно)
 	r.Vx *= math.Pow(0.9, dt)
 }
