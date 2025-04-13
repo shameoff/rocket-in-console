@@ -1,8 +1,5 @@
 package objects
 
-// HoverThrust – базовая вертикальная тяга, необходимая для зависания.
-const HoverThrust = 9.8
-
 // Rocket описывает состояние ракеты
 type Rocket struct {
 	X, Y    int     // позиция (левый верхний угол спрайта)

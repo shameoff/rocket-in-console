@@ -1,30 +1,48 @@
-// Package physics.go
 package physics
 
 import (
-	"github.com/shameoff/rocket-in-console/pkg/objects"
 	"math"
+
+	"github.com/shameoff/rocket-in-console/pkg/objects"
 )
 
-// UpdateRocket обновляет состояние ракеты.
-// Если ракета в зоне гравитации (altitude < gravityCutoff), чистое ускорение = ThrustY - 9.8 (гравитация).
-// Если вне зоны, чистое ускорение = ThrustY.
-// При отрицательном ускорении применяется небольшое затухание.
-func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, gravityCutoff float64, hoverThrust float64) {
+// Earth radius in meters
+const EarthRadius = 6371000.0
+
+// Standard Earth gravity at sea level (m/s²)
+const StandardGravity = 9.80665
+
+// Kármán line - conventional boundary of space (meters)
+const KarmanLine = 100000.0
+
+// Масштабный коэффициент для перевода игровых единиц в реальные
+const GameToRealScale = 100.0
+
+// Calculates gravity strength at given altitude using inverse square law
+func CalculateGravity(altitude float64) float64 {
+	// Convert game altitude units to meters
+	altitudeInMeters := altitude * GameToRealScale
+
+	// Calculate gravity using inverse square law
+	// g = GM/r² = g₀*(R/(R+h))²
+	// where g₀ is standard gravity, R is Earth radius, h is altitude
+	gravity := StandardGravity * math.Pow(EarthRadius/(EarthRadius+altitudeInMeters), 2)
+	return gravity
+}
+
+// UpdateRocket обновляет состояние ракеты с учётом реалистичной гравитации.
+func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, hoverThrust float64) {
 	// Вычисляем "альтитуду" (расстояние от земли; поскольку y растет вниз, чем меньше r.Y, тем выше ракета)
 	altitude := float64(groundLevel - r.Y)
 
-	var netAccY float64
-	if altitude < gravityCutoff {
-		netAccY = r.ThrustY - 9.8
-		if netAccY < 0 {
-			netAccY *= 0.3
-		}
-	} else {
-		netAccY = r.ThrustY
-	}
+	// Рассчитываем силу гравитации на текущей высоте
+	gravity := CalculateGravity(altitude)
+
+	// Вычисляем чистое ускорение (гравитация действует вниз, тяга - вверх)
+	netAccY := r.ThrustY - gravity
 
 	// Интегрируем ускорение в скорость
+	// Отрицательная Vy означает движение вверх, положительная - вниз
 	r.Vy -= netAccY * dt
 	r.Vx += r.ThrustX * dt
 
