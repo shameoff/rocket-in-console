@@ -30,21 +30,55 @@ func CalculateGravity(altitude float64) float64 {
 	return gravity
 }
 
-// UpdateRocket обновляет состояние ракеты с учётом реалистичной гравитации.
+// UpdateRocket обновляет состояние ракеты с учётом реалистичной гравитации и характеристик текущей ступени.
 func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, hoverThrust float64) {
 	// Вычисляем "альтитуду" (расстояние от земли)
 	altitude := float64(groundLevel - r.Y)
 
 	// Рассчитываем силу гравитации на текущей высоте
 	gravity := CalculateGravity(altitude)
+	
+	// Получаем текущую ступень и её характеристики
+	currentStage := objects.RocketStages[r.ActiveStage]
 
-	// Вычисляем чистое ускорение (гравитация действует вниз, тяга - вверх)
-	netAccY := r.ThrustY - gravity
+	// Учитываем расход топлива в зависимости от ступени
+	if r.ThrustY > gravity {
+		fuelUsed := (r.ThrustY - gravity) * dt * currentStage.FuelConsumptionRate
+		r.Fuel -= fuelUsed
+		if r.Fuel < 0 {
+			r.Fuel = 0
+			r.ThrustY = 0 // Топливо закончилось, тяги нет
+		}
+	}
+
+	// Вычисляем модификаторы ускорения на основе характеристик ступени
+	// Текущая ступень определяет эффективность тяги
+	thrustEfficiencyY := currentStage.MaxThrustY / 15.0 // Нормализуем относительно базовой ступени
+	thrustEfficiencyX := currentStage.MaxThrustX / 2.0  // Нормализуем относительно базовой ступени
+	
+	// Ограничиваем тягу максимальной для текущей ступени
+	appliedThrustY := r.ThrustY
+	if appliedThrustY > currentStage.MaxThrustY {
+		appliedThrustY = currentStage.MaxThrustY
+	}
+	
+	appliedThrustX := r.ThrustX
+	if math.Abs(appliedThrustX) > currentStage.MaxThrustX {
+		if appliedThrustX > 0 {
+			appliedThrustX = currentStage.MaxThrustX
+		} else {
+			appliedThrustX = -currentStage.MaxThrustX
+		}
+	}
+
+	// Вычисляем чистое ускорение с учетом эффективности ступени
+	netAccY := appliedThrustY*thrustEfficiencyY - gravity
+	netAccX := appliedThrustX * thrustEfficiencyX
 
 	// Интегрируем ускорение в скорость
 	// Отрицательная Vy означает движение вверх, положительная - вниз
 	r.Vy -= netAccY * dt
-	r.Vx += r.ThrustX * dt
+	r.Vx += netAccX * dt
 
 	// Аккумулируем дробные значения перемещения
 	r.AccumulatedX += r.Vx * dt
@@ -64,9 +98,12 @@ func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, hoverThrust fl
 		r.AccumulatedY -= float64(deltaY)
 	}
 
+	// Получаем актуальный спрайт ракеты для проверки столкновений
+	rocketSprite := r.GetRocketSprite()
+
 	// Проверка на касание земли
-	if r.Y+len(objects.RocketSprite) > groundLevel && r.Vy >= 0 {
-		r.Y = groundLevel - len(objects.RocketSprite)
+	if r.Y+len(rocketSprite) > groundLevel && r.Vy >= 0 {
+		r.Y = groundLevel - len(rocketSprite)
 		r.Vy = 0
 		r.AccumulatedY = 0
 	}

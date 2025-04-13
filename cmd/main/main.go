@@ -15,7 +15,7 @@ import (
 const (
 	verticalStep     = 0.5
 	horizontalStep   = 0.5
-	thrustDecayRate  = 3.0 // Скорость снижения тяги при отпускании клавиши
+	thrustDecayRate  = 0.0 // Скорость снижения тяги при отпускании клавиши
 	decayRate        = 0.3
 	safeLandingSpeed = 20.0
 )
@@ -26,6 +26,7 @@ func processInput(rocket *objects.Rocket, eventQueue chan tcell.Event, dt float6
 	downPressed := false
 	leftPressed := false
 	rightPressed := false
+	stageToggled := false
 
 	// Проверка событий клавиатуры
 	for {
@@ -55,6 +56,8 @@ func processInput(rocket *objects.Rocket, eventQueue chan tcell.Event, dt float6
 					leftPressed = true
 				case 'd', 'D':
 					rightPressed = true
+				case ' ': // Использование руны пробела вместо tcell.KeySpace
+					stageToggled = true
 				case 'q', 'Q':
 					return true
 				}
@@ -66,10 +69,20 @@ func processInput(rocket *objects.Rocket, eventQueue chan tcell.Event, dt float6
 	}
 
 processMovement:
+	// Переключение ступеней
+	if stageToggled {
+		rocket.ActiveStage = (rocket.ActiveStage + 1) % len(objects.RocketStages)
+	}
 
-	// Обработка вертикального движения
+	// Получаем текущую ступень
+	currentStage := objects.RocketStages[rocket.ActiveStage]
+
+	// Обработка вертикального движения с учётом макс. тяги текущей ступени
 	if upPressed {
 		rocket.ThrustY += verticalStep
+		if rocket.ThrustY > currentStage.MaxThrustY {
+			rocket.ThrustY = currentStage.MaxThrustY
+		}
 	} else if downPressed {
 		rocket.ThrustY -= verticalStep
 	} else {
@@ -77,11 +90,17 @@ processMovement:
 		rocket.ThrustY += (0 - rocket.ThrustY) * thrustDecayRate * dt
 	}
 
-	// Обработка горизонтального движения
+	// Обработка горизонтального движения с учётом макс. тяги текущей ступени
 	if leftPressed {
 		rocket.ThrustX -= horizontalStep
+		if rocket.ThrustX < -currentStage.MaxThrustX {
+			rocket.ThrustX = -currentStage.MaxThrustX
+		}
 	} else if rightPressed {
 		rocket.ThrustX += horizontalStep
+		if rocket.ThrustX > currentStage.MaxThrustX {
+			rocket.ThrustX = currentStage.MaxThrustX
+		}
 	} else {
 		// Если клавиши не нажаты, плавно снижаем тягу
 		rocket.ThrustX += (0 - rocket.ThrustX) * thrustDecayRate * dt
@@ -96,7 +115,10 @@ func updateGame(rocket *objects.Rocket, dt float64, hoverThrust float64) {
 }
 
 func handleCollisions(screen tcell.Screen, rocket *objects.Rocket) {
-	if rocket.Y+len(objects.RocketSprite) >= objects.GroundLevel && rocket.Vy > safeLandingSpeed {
+	// Получаем текущий спрайт ракеты
+	rocketSprite := rocket.GetRocketSprite()
+	
+	if rocket.Y+len(rocketSprite) >= objects.GroundLevel && rocket.Vy > safeLandingSpeed {
 		screenWidth, screenHeight := screen.Size()
 		cameraX := rocket.X - screenWidth/2
 		cameraY := rocket.Y - screenHeight/2
@@ -130,10 +152,18 @@ func renderFrame(screen tcell.Screen, rocket *objects.Rocket) {
 	render.DrawStars(screen, cameraX, cameraY, screenWidth, screenHeight, objects.Stars, objects.IsStarAt)
 	render.DrawGround(screen, cameraX, cameraY, screenWidth, screenHeight, objects.GroundLevel)
 	render.DrawTrees(screen, objects.Trees, cameraX, cameraY, screenWidth, screenHeight)
-	render.DrawSprite(screen, rocket.X-cameraX, rocket.Y-cameraY, objects.RocketSprite, tcell.ColorWhite, tcell.ColorBlack)
+	
+	// Используем динамический спрайт ракеты вместо статичного
+	rocketSprite := rocket.GetRocketSprite()
+	render.DrawSprite(screen, rocket.X-cameraX, rocket.Y-cameraY, rocketSprite, tcell.ColorWhite, tcell.ColorBlack)
+	
 	render.DrawExhaust(screen, rocket, cameraX, cameraY)
 	render.DrawStats(screen, rocket, objects.GroundLevel)
-	// render.DrawStats(screen, rocket, screenWidth, screenHeight)
+	
+	// Отображаем информацию о текущей ступени ракеты без пробела
+	stageName := objects.RocketStages[rocket.ActiveStage].Name
+	render.DrawText(screen, 1, 1, "Stage:" + stageName, tcell.StyleDefault.Foreground(tcell.ColorYellow))
+	
 	const cosmicSpeedThreshold = 100.0
 	if rocket.Vy > cosmicSpeedThreshold {
 		render.DrawNotificationBox(screen, screenWidth, "COSMIC SPEED!")
@@ -166,13 +196,14 @@ func main() {
 	hoverThrust := physics.StandardGravity
 
 	rocket := &objects.Rocket{
-		X:       objects.WorldWidth/2 - len(objects.RocketSprite[0])/2,
-		Y:       objects.GroundLevel - len(objects.RocketSprite),
-		Vx:      0,
-		Vy:      0,
-		ThrustX: 0,
-		ThrustY: hoverThrust,
-		Fuel:    100,
+		X:           objects.WorldWidth/2 - len(objects.RocketSprite[0])/2,
+		Y:           objects.GroundLevel - len(objects.RocketSprite),
+		Vx:          0,
+		Vy:          0,
+		ThrustX:     0,
+		ThrustY:     hoverThrust,
+		Fuel:        10000,
+		ActiveStage: 0,
 	}
 
 	lastTime := time.Now()

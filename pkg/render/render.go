@@ -69,6 +69,10 @@ func DrawStats(screen tcell.Screen, rocket *objects.Rocket, groundLevel int) {
 	// Рассчитываем текущую гравитацию на этой высоте
 	currentGravity := physics.CalculateGravity(altitude)
 
+	// Получаем расход топлива для текущей ступени
+	currentStage := objects.RocketStages[rocket.ActiveStage]
+	fuelConsumptionRate := currentStage.FuelConsumptionRate
+
 	// Статистические строки
 	stats := []string{
 		fmt.Sprintf("Altitude: %.2f km", altitudeKm),
@@ -76,6 +80,7 @@ func DrawStats(screen tcell.Screen, rocket *objects.Rocket, groundLevel int) {
 		fmt.Sprintf("Hspeed: %.2f %s", math.Abs(speedX), horizontalSpeedDirection),
 		fmt.Sprintf("Thrust: V=%.2f H=%.2f", rocket.ThrustY, rocket.ThrustX),
 		fmt.Sprintf("Gravity: %.2f", currentGravity),
+		fmt.Sprintf("Fuel: %.1f%% (Rate: %.1fx)", rocket.Fuel, fuelConsumptionRate),
 	}
 
 	// Если мы находимся в космосе (выше линии Кармана), добавляем индикатор
@@ -218,19 +223,34 @@ func DrawNotificationBox(screen tcell.Screen, screenWidth int, message string) {
 // DrawExhaust рисует след от сопел, если активирована тяга в горизонтальном или вертикальном направлении.
 func DrawExhaust(screen tcell.Screen, rocket *objects.Rocket, cameraX, cameraY int) {
 	threshold := 0.5
-	width := len(objects.RocketSprite[0])
-	height := len(objects.RocketSprite)
+	rocketSprite := rocket.GetRocketSprite()
+	width := len(rocketSprite[0])
+	height := len(rocketSprite)
 
 	// Рассчитаем текущую величину гравитации для определения порога тяги
 	altitude := float64(objects.GroundLevel - rocket.Y)
 	currentGravity := physics.CalculateGravity(altitude)
+
+	// Получаем текущую ступень
+	currentStage := objects.RocketStages[rocket.ActiveStage]
 
 	// Горизонтальный след (вспомогательные двигатели):
 	blueStyle := tcell.StyleDefault.Foreground(tcell.ColorBlue).Background(tcell.ColorBlack)
 	redStyle := tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack)
 
 	if rocket.ThrustX > threshold {
-		flame := "=>"
+		// Количество символов для горизонтальных двигателей зависит от макс. тяги ступени
+		flameLength := int(currentStage.MaxThrustX) + 1
+		if flameLength > 5 {
+			flameLength = 5 // Ограничиваем максимальную длину пламени
+		}
+		
+		flame := ""
+		for i := 0; i < flameLength; i++ {
+			flame += "="
+		}
+		flame += ">"
+		
 		x := rocket.X - cameraX - len(flame)
 		y1 := rocket.Y - cameraY + height/3
 		y2 := rocket.Y - cameraY + (2 * height / 3)
@@ -239,7 +259,17 @@ func DrawExhaust(screen tcell.Screen, rocket *objects.Rocket, cameraX, cameraY i
 			screen.SetContent(x+i, y2, r, nil, blueStyle)
 		}
 	} else if rocket.ThrustX < -threshold {
-		flame := "<="
+		// Количество символов для горизонтальных двигателей зависит от макс. тяги ступени
+		flameLength := int(currentStage.MaxThrustX) + 1
+		if flameLength > 5 {
+			flameLength = 5 // Ограничиваем максимальную длину пламени
+		}
+		
+		flame := "<"
+		for i := 0; i < flameLength; i++ {
+			flame += "="
+		}
+		
 		x := rocket.X - cameraX + width
 		y1 := rocket.Y - cameraY + height/3
 		y2 := rocket.Y - cameraY + (2 * height / 3)
@@ -250,22 +280,41 @@ func DrawExhaust(screen tcell.Screen, rocket *objects.Rocket, cameraX, cameraY i
 	}
 
 	// Вертикальный след (главный двигатель)
-	// Теперь используем динамическую гравитацию вместо константы
+	// Визуализация на основе мощности ступени: чем больше MaxThrustY, тем больше огоньков
+	var flamePower string
+	
+	// Рассчитываем количество символов в зависимости от макс. тяги ступени
+	flameSymbols := int(currentStage.MaxThrustY / 5.0)
+	if flameSymbols < 1 {
+		flameSymbols = 1
+	} else if flameSymbols > 6 {
+		flameSymbols = 6 // Ограничиваем макс. количество
+	}
+
+	// Формируем строку с огоньками
+	for i := 0; i < flameSymbols; i++ {
+		flamePower += "v"
+	}
+
 	if rocket.ThrustY > currentGravity+threshold {
-		flame := "vv"
 		x1 := rocket.X - cameraX + width/3
-		x2 := rocket.X - cameraX + (2*width)/3 - len(flame)
+		x2 := rocket.X - cameraX + (2*width)/3 - len(flamePower)
 		y := rocket.Y - cameraY + height
-		for i, r := range flame {
+		for i, r := range flamePower {
 			screen.SetContent(x1+i, y, r, nil, redStyle)
 			screen.SetContent(x2+i, y, r, nil, redStyle)
 		}
 	} else if rocket.ThrustY < currentGravity-threshold {
-		flame := "^^"
+		// Преобразуем символы в '^' для обратной тяги
+		upFlamePower := ""
+		for i := 0; i < flameSymbols; i++ {
+			upFlamePower += "^"
+		}
+		
 		x1 := rocket.X - cameraX + width/3
-		x2 := rocket.X - cameraX + (2*width)/3 - len(flame)
+		x2 := rocket.X - cameraX + (2*width)/3 - len(upFlamePower)
 		y := rocket.Y - cameraY - 1
-		for i, r := range flame {
+		for i, r := range upFlamePower {
 			screen.SetContent(x1+i, y, r, nil, blueStyle)
 			screen.SetContent(x2+i, y, r, nil, blueStyle)
 		}
