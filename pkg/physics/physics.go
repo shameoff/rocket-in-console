@@ -32,7 +32,7 @@ func CalculateGravity(altitude float64) float64 {
 
 // UpdateRocket обновляет состояние ракеты с учётом реалистичной гравитации.
 func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, hoverThrust float64) {
-	// Вычисляем "альтитуду" (расстояние от земли; поскольку y растет вниз, чем меньше r.Y, тем выше ракета)
+	// Вычисляем "альтитуду" (расстояние от земли)
 	altitude := float64(groundLevel - r.Y)
 
 	// Рассчитываем силу гравитации на текущей высоте
@@ -46,15 +46,29 @@ func UpdateRocket(r *objects.Rocket, dt float64, groundLevel int, hoverThrust fl
 	r.Vy -= netAccY * dt
 	r.Vx += r.ThrustX * dt
 
-	// Интегрируем скорость в положение
-	r.X += int(r.Vx * dt)
-	r.Y += int(r.Vy * dt)
+	// Аккумулируем дробные значения перемещения
+	r.AccumulatedX += r.Vx * dt
+	r.AccumulatedY += r.Vy * dt
 
-	// Позволяем ракете покидать землю, если Vy < 0 (то есть она движется вверх).
-	// Если же Vy >= 0 и ракета касается земли, то фиксируем положение.
+	// Перемещаем ракету только когда накопленное смещение >= 1 пиксель
+	deltaX := int(r.AccumulatedX)
+	deltaY := int(r.AccumulatedY)
+
+	if deltaX != 0 {
+		r.X += deltaX
+		r.AccumulatedX -= float64(deltaX)
+	}
+
+	if deltaY != 0 {
+		r.Y += deltaY
+		r.AccumulatedY -= float64(deltaY)
+	}
+
+	// Проверка на касание земли
 	if r.Y+len(objects.RocketSprite) > groundLevel && r.Vy >= 0 {
 		r.Y = groundLevel - len(objects.RocketSprite)
 		r.Vy = 0
+		r.AccumulatedY = 0
 	}
 
 	// Затухание горизонтальной скорости

@@ -20,7 +20,7 @@ const (
 	safeLandingSpeed = 20.0
 )
 
-func processInput(rocket *objects.Rocket, eventQueue chan tcell.Event, dt float64, hoverThrust float64) bool {
+func processInput(rocket *objects.Rocket, eventQueue chan tcell.Event, dt float64) bool {
 	// Флаги нажатия клавиш в текущем цикле
 	upPressed := false
 	downPressed := false
@@ -66,9 +66,6 @@ func processInput(rocket *objects.Rocket, eventQueue chan tcell.Event, dt float6
 	}
 
 processMovement:
-	// Расчет текущей гравитации
-	altitude := float64(objects.GroundLevel - rocket.Y)
-	currentGravity := physics.CalculateGravity(altitude)
 
 	// Обработка вертикального движения
 	if upPressed {
@@ -76,15 +73,8 @@ processMovement:
 	} else if downPressed {
 		rocket.ThrustY -= verticalStep
 	} else {
-		// Если клавиши не нажаты, плавно снижаем тягу
-		var targetThrust float64
-		if altitude < physics.KarmanLine/100.0 {
-			targetThrust = currentGravity // В атмосфере стремимся к зависанию
-		} else {
-			targetThrust = 0 // В космосе к нулю
-		}
-
-		rocket.ThrustY += (targetThrust - rocket.ThrustY) * thrustDecayRate * dt
+		// При отпускании клавиш, тяга быстро падает до нуля (не до гравитации!)
+		rocket.ThrustY += (0 - rocket.ThrustY) * thrustDecayRate * dt
 	}
 
 	// Обработка горизонтального движения
@@ -192,7 +182,7 @@ func main() {
 		dt := now.Sub(lastTime).Seconds()
 		lastTime = now
 
-		if processInput(rocket, eventQueue, dt, hoverThrust) {
+		if processInput(rocket, eventQueue, dt) {
 			return
 		}
 
